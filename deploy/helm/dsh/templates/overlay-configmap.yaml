@@ -1,0 +1,13 @@
+{{- if or .Values.web.enabled .Values.sdk.enabled }}
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "dsh.fullname" . }}-overlay
+  labels: {{- include "dsh.labels" . | nindent 4 }}
+data:
+  overlay.yml: |
+    - id: system-prompt
+      config:
+        includeHarnessIdentity: false
+        personaPrefix: {{ .Values.persona | toJson }}
+{{- end }}

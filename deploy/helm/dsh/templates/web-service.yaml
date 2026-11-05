@@ -1,0 +1,15 @@
+{{- if .Values.web.enabled }}
+{{- $name := printf "%s-web" (include "dsh.fullname" .) }}
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ $name }}
+  labels: {{- include "dsh.labels" . | nindent 4 }}
+spec:
+  type: {{ .Values.web.service.type }}
+  selector: {{- include "dsh.selector" (dict "name" $name "root" .) | nindent 4 }}
+  ports:
+    - name: http
+      port: {{ .Values.web.service.port }}
+      targetPort: http
+{{- end }}

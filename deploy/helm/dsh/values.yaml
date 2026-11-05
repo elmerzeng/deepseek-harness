@@ -1,0 +1,94 @@
+image:
+  repository: reg.hrlyit.com/deepseek-ai/dsh # built from the repository Dockerfile
+  tag: ""                                  # defaults to Chart.appVersion
+  pullPolicy: IfNotPresent
+
+# Environment shared by both workloads. DEEPSEEK_API_KEY comes from a Secret.
+deepseek:
+  existingSecret: ""          # Secret holding DEEPSEEK_API_KEY; when empty, apiKey below creates one
+  apiKey: ""
+  baseUrl: ""                 # optional DEEPSEEK_BASE_URL
+atk:
+  existingSecret: ""          # Secret holding DEEPSEEK_API_KEY; when empty, apiKey below creates one
+  apiKey: ""
+  baseUrl: ""                 # optional DEEPSEEK_BASE_URL
+gpustack:
+  existingSecret: ""          # Secret holding DEEPSEEK_API_KEY; when empty, apiKey below creates one
+  apiKey: ""
+  baseUrl: ""                 # optional DEEPSEEK_BASE_URL
+yuanbao:
+  apiKey: ""
+
+env: []                       # extra container env entries (name/value or valueFrom)
+
+# System-prompt identity. Replaces the fixed "You are an AI agent powered by DeepSeek
+# Harness." opener and the profiles' persona with this text. `{{model}}` expands to the
+# model name at request time. Applied to web and sdk through a `--patch` overlay.
+persona: "You are Linklogis Harness (LLH), a coding agent powered by the {{model}} model. If asked who or what you are, answer that you are Linklogis Harness (LLH)."
+
+# `dsh --profile web`. The server binds the Pod IP (wildcard binds are rejected), so
+# the Pod address is injected from the downward API.
+web:
+  enabled: true
+  replicaCount: 1
+  port: 3080
+  # Browser-facing URL behind a prefix-stripping proxy, e.g. https://host.example/dsh/.
+  # Advertises that root and trusts its authority in the /api Host/Origin fence.
+  publicUrl: ""
+  trustedHosts: []            # extra authorities the fence accepts (host or host:port)
+  extraArgs: []               # extra `dsh --profile web` flags
+  service:
+    type: ClusterIP
+    port: 80
+  ingress:                    # Traefik IngressRoute (traefik.containo.us/v1alpha1)
+    enabled: false
+    host: ""                  # also passed as --public-url/--trusted-host
+    pathPrefix: ""            # e.g. /dsh/ : route only this prefix and strip it before the pod
+    entryPoints: [web]        # use [websecure] with tls
+    tls: false
+    tlsSecretName: ""         # TLS Secret; empty uses Traefik's default certificate/resolver
+    certResolver: ""
+    annotations: {}
+    labels: {}                # extra labels on the IngressRoute (e.g. gateway manager labels)
+  resources: {}
+  nodeSelector: {}
+  tolerations: []
+  affinity: {}
+
+# `dsh --profile sdk` speaks JSON-RPC over stdio only. With service.enabled a TCP bridge
+# (files/sdk-bridge.mjs) starts one runtime per connection behind a ClusterIP Service;
+# without it the pod idles and clients attach with `kubectl exec -i deploy/<release>-dsh-sdk -- ...`.
+# The runtime can run shell commands and edit files, so every connection must present the token.
+sdk:
+  enabled: false
+  profile: sdk                # sdk | sdk-minimal
+  replicaCount: 1
+  service:
+    enabled: false
+    port: 7000
+    maxConnections: 16        # concurrent runtimes per pod
+    token: ""                 # required when enabled; first line each client sends
+    existingSecret: ""        # Secret with key `token`, instead of token above
+  resources: {}
+  nodeSelector: {}
+  tolerations: []
+  affinity: {}
+
+# Working directory of the web and sdk containers; must exist on the PVC and be writable by uid 1000.
+workingDir: /home/dsh
+
+# PVC shared by web and sdk, mounted at /home/dsh (HOME; DSH_HOME is /home/dsh/.dsh).
+# With create=false, name must be an existing claim. Use ReadWriteMany if the pods can
+# land on different nodes (the StorageClass must support it).
+pvc:
+  create: true
+  name: "dsh-dsh-data-shared"                    # --set pvc.name=...; defaults to <release>-dsh-home
+  subPath: ""                 # mount only this directory of the volume at /home/dsh (must already exist)
+  size: 20Gi
+  storageClassName: ""
+  accessMode: ReadWriteMany
+
+podSecurityContext:
+  runAsUser: 1000
+  runAsGroup: 1000
+  fsGroup: 1000

@@ -1,0 +1,11 @@
+.git
+.github
+.agents
+**/node_modules
+**/.turbo
+**/*.tsbuildinfo
+website
+benchmarks
+snapshots
+python
+docs
