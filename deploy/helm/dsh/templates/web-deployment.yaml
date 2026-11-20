@@ -1,0 +1,95 @@
+{{- if .Values.web.enabled }}
+{{- $name := printf "%s-web" (include "dsh.fullname" .) }}
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ $name }}
+  labels: {{- include "dsh.labels" . | nindent 4 }}
+spec:
+  replicas: {{ .Values.web.replicaCount }}
+  selector:
+    matchLabels: {{- include "dsh.selector" (dict "name" $name "root" .) | nindent 6 }}
+  template:
+    metadata:
+      labels: {{- include "dsh.selector" (dict "name" $name "root" .) | nindent 8 }}
+    spec:
+      securityContext: {{- toYaml .Values.podSecurityContext | nindent 8 }}
+      {{- include "dsh.initContainers" . | nindent 6 }}
+      containers:
+        - name: web
+          image: {{ include "dsh.image" . }}
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          args:
+            - --profile
+            - web
+            - --patch
+            - /etc/dsh/overlay.yml
+            - --no-open
+            - --host
+            - $(POD_IP)
+            - --port
+            - {{ .Values.web.port | quote }}
+            {{- if .Values.web.publicUrl }}
+            - --public-url
+            - {{ .Values.web.publicUrl | quote }}
+            - --trusted-host
+            - {{ (urlParse .Values.web.publicUrl).host | quote }}
+            {{- else if .Values.web.ingress.host }}
+            - --public-url
+            - {{ printf "%s://%s/" (ternary "https" "http" .Values.web.ingress.tls) .Values.web.ingress.host | quote }}
+            - --trusted-host
+            - {{ .Values.web.ingress.host | quote }}
+            {{- end }}
+            {{- range .Values.web.trustedHosts }}
+            - --trusted-host
+            - {{ . | quote }}
+            {{- end }}
+            {{- range .Values.web.extraArgs }}
+            - {{ . | quote }}
+            {{- end }}
+          env:
+            - name: POD_IP
+              valueFrom:
+                fieldRef:
+                  fieldPath: status.podIP
+            {{- include "dsh.env" . | nindent 12 }}
+          ports:
+            - name: http
+              containerPort: {{ .Values.web.port }}
+          readinessProbe:
+            tcpSocket:
+              port: http
+          livenessProbe:
+            tcpSocket:
+              port: http
+            initialDelaySeconds: 30
+          workingDir: {{ .Values.workingDir | default "/home/dsh" }}
+          volumeMounts:
+            - name: home
+              mountPath: /home/dsh
+              {{- with .Values.pvc.subPath }}
+              subPath: {{ . }}
+              {{- end }}
+            - name: overlay
+              mountPath: /etc/dsh
+              readOnly: true
+          {{- with .Values.web.resources }}
+          resources: {{ toYaml . | nindent 12 }}
+          {{- end }}
+      volumes:
+        - name: overlay
+          configMap:
+            name: {{ include "dsh.fullname" . }}-overlay
+        - name: home
+          persistentVolumeClaim:
+            claimName: {{ include "dsh.pvcName" . }}
+      {{- with .Values.web.nodeSelector }}
+      nodeSelector: {{ toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.web.tolerations }}
+      tolerations: {{ toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.web.affinity }}
+      affinity: {{ toYaml . | nindent 8 }}
+      {{- end }}
+{{- end }}

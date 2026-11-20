@@ -1,0 +1,35 @@
+{{- if and .Values.sdk.enabled .Values.sdk.service.enabled }}
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "dsh.fullname" . }}-sdk-bridge
+  labels: {{- include "dsh.labels" . | nindent 4 }}
+data:
+  sdk-bridge.mjs: |
+    {{- .Files.Get "files/sdk-bridge.mjs" | nindent 4 }}
+{{- if not .Values.sdk.service.existingSecret }}
+{{- if not .Values.sdk.service.token }}{{ fail "set sdk.service.token or sdk.service.existingSecret" }}{{ end }}
+---
+apiVersion: v1
+kind: Secret
+metadata:
+  name: {{ include "dsh.sdkTokenSecret" . }}
+  labels: {{- include "dsh.labels" . | nindent 4 }}
+type: Opaque
+stringData:
+  token: {{ .Values.sdk.service.token | quote }}
+{{- end }}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "dsh.fullname" . }}-sdk
+  labels: {{- include "dsh.labels" . | nindent 4 }}
+spec:
+  type: ClusterIP
+  selector: {{- include "dsh.selector" (dict "name" (printf "%s-sdk" (include "dsh.fullname" .)) "root" .) | nindent 4 }}
+  ports:
+    - name: sdk
+      port: {{ .Values.sdk.service.port }}
+      targetPort: sdk
+{{- end }}

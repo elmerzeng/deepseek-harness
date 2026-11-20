@@ -1,0 +1,41 @@
+.git
+.github
+.agents
+**/node_modules
+**/.turbo
+**/*.tsbuildinfo
+website
+benchmarks
+snapshots
+python
+docs
+
+# Secrets: never bake a local key into an image layer.
+.env
+.env.*
+apps/desktop/.env.*
+
+# Build outputs and local tool state the image regenerates itself; none of these are
+# tracked in git, so a stale local copy would only add dead weight (or a host-platform
+# mismatch) to the build context.
+**/lib
+**/dist
+**/coverage
+.cache
+.pnpm-store
+tmp
+examples
+dist-exe
+.artifacts
+.dsh-build
+.dsh-report
+.ui-review
+.playwright-mcp
+.sessions
+.storages
+
+# Editor/OS cruft.
+.vscode
+.idea
+.DS_Store
+pnpm-debug.log

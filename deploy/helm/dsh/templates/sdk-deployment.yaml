@@ -1,0 +1,93 @@
+{{- if .Values.sdk.enabled }}
+{{- $name := printf "%s-sdk" (include "dsh.fullname" .) }}
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ $name }}
+  labels: {{- include "dsh.labels" . | nindent 4 }}
+spec:
+  replicas: {{ .Values.sdk.replicaCount }}
+  selector:
+    matchLabels: {{- include "dsh.selector" (dict "name" $name "root" .) | nindent 6 }}
+  template:
+    metadata:
+      labels: {{- include "dsh.selector" (dict "name" $name "root" .) | nindent 8 }}
+    spec:
+      securityContext: {{- toYaml .Values.podSecurityContext | nindent 8 }}
+      {{- include "dsh.initContainers" . | nindent 6 }}
+      containers:
+        # The idle container only provides the image and environment. A client starts the
+        # stdio server per connection: kubectl exec -i deploy/{{ $name }} -- node /src/apps/cli/lib/bin.js --profile {{ .Values.sdk.profile }} --patch /etc/dsh/overlay.yml
+        - name: sdk
+          image: {{ include "dsh.image" . }}
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          {{- if .Values.sdk.service.enabled }}
+          command:
+            - node
+            - /etc/dsh-bridge/sdk-bridge.mjs
+            - {{ .Values.sdk.service.port | quote }}
+            - {{ .Values.sdk.service.maxConnections | quote }}
+            - node
+            - /src/apps/cli/lib/bin.js
+            - --profile
+            - {{ .Values.sdk.profile }}
+            - --patch
+            - /etc/dsh/overlay.yml
+          ports:
+            - name: sdk
+              containerPort: {{ .Values.sdk.service.port }}
+          readinessProbe:
+            tcpSocket:
+              port: sdk
+          {{- else }}
+          command: ["sleep", "infinity"]
+          {{- end }}
+          env:
+            {{- include "dsh.env" . | nindent 12 }}
+            {{- if .Values.sdk.service.enabled }}
+            - name: DSH_SDK_BRIDGE_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "dsh.sdkTokenSecret" . }}
+                  key: token
+            {{- end }}
+          workingDir: {{ .Values.workingDir | default "/home/dsh" }}
+          volumeMounts:
+            - name: home
+              mountPath: /home/dsh
+              {{- with .Values.pvc.subPath }}
+              subPath: {{ . }}
+              {{- end }}
+            - name: overlay
+              mountPath: /etc/dsh
+              readOnly: true
+            {{- if .Values.sdk.service.enabled }}
+            - name: bridge
+              mountPath: /etc/dsh-bridge
+              readOnly: true
+            {{- end }}
+          {{- with .Values.sdk.resources }}
+          resources: {{ toYaml . | nindent 12 }}
+          {{- end }}
+      volumes:
+        - name: overlay
+          configMap:
+            name: {{ include "dsh.fullname" . }}-overlay
+        {{- if .Values.sdk.service.enabled }}
+        - name: bridge
+          configMap:
+            name: {{ include "dsh.fullname" . }}-sdk-bridge
+        {{- end }}
+        - name: home
+          persistentVolumeClaim:
+            claimName: {{ include "dsh.pvcName" . }}
+      {{- with .Values.sdk.nodeSelector }}
+      nodeSelector: {{ toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.sdk.tolerations }}
+      tolerations: {{ toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.sdk.affinity }}
+      affinity: {{ toYaml . | nindent 8 }}
+      {{- end }}
+{{- end }}
